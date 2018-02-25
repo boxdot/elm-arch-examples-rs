@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["boxdot <d@zerovolt.org>"]
 
 [dependencies]
+futures = "0.1"
+tokio = "0.1"
+tokio-io = "0.1"
+time = "0.1"
