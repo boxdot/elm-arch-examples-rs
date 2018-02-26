@@ -1,3 +1,6 @@
+extern crate futures;
+extern crate tokio_core;
+
 use futures::prelude::*;
 use futures::future;
 use futures::sync::mpsc::channel;

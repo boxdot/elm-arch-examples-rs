@@ -1,7 +1,11 @@
 [package]
-name = "elm-architecture"
+name = "elm-arch-examples"
 version = "0.1.0"
 authors = ["boxdot <d@zerovolt.org>"]
+
+[lib]
+name = "elm_arch"
+path = "src/lib.rs"
 
 [[bin]]
 name = "random"

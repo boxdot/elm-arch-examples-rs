@@ -1,16 +1,13 @@
+extern crate elm_arch;
 extern crate futures;
 extern crate time;
-extern crate tokio_core;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use time::{now_utc, Tm};
+use elm_arch::{Cmd, Program, Sub};
 
 use std::thread;
-
-mod program;
-
-use program::{Cmd, Program, Sub};
 
 struct Model(Tm);
 

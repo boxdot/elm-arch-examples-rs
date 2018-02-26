@@ -1,17 +1,14 @@
+extern crate elm_arch;
 extern crate futures;
 extern crate rand;
-extern crate tokio_core;
-
-mod program;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use rand::distributions::{Range, Sample};
+use elm_arch::{Cmd, Program, Sub};
 
 use std::io::{self, BufRead};
 use std::thread;
-
-use program::{Cmd, Program, Sub};
 
 #[derive(Debug)]
 struct Model {
@@ -61,6 +58,7 @@ fn roll_dice() -> u8 {
 }
 
 fn main() {
+    println!("Please, press enter!");
     Program {
         init,
         view,
