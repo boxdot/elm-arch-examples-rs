@@ -7,13 +7,7 @@ use time::{now_utc, Tm};
 
 use std::thread;
 
-#[derive(Debug)]
-struct Program<Init, View, Update, Subscriptions> {
-    init: Init,
-    view: View,
-    update: Update,
-    subscriptions: Subscriptions,
-}
+mod program;
 
 struct Model(Tm);
 
@@ -57,19 +51,10 @@ fn view(model: &Model) -> String {
 }
 
 fn main() {
-    let program = Program {
+    program::Program {
         init: init,
         view: view,
         update: update,
         subscriptions: subscriptions,
-    };
-
-    (program.subscriptions)()
-        .fold((program.init)().0, |model, msg| {
-            let (new_model, _cmd) = (program.update)(model, msg);
-            println!("{}", (program.view)(&new_model));
-            Ok(new_model)
-        })
-        .wait()
-        .unwrap();
+    }.run()
 }
