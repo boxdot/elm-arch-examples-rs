@@ -1,5 +1,6 @@
 extern crate futures;
 extern crate time;
+extern crate tokio_core;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
@@ -9,9 +10,11 @@ use std::thread;
 
 mod program;
 
+use program::{Cmd, Program, Sub};
+
 struct Model(Tm);
 
-fn init() -> (Model, Cmd) {
+fn init() -> (Model, Cmd<Msg>) {
     (Model(now_utc()), Cmd::None)
 }
 
@@ -19,13 +22,8 @@ enum Msg {
     Tick(Tm),
 }
 
-enum Cmd {
-    None,
-    _Msg(Msg),
-}
-
-fn update(_model: Model, msg: Msg) -> (Model, Cmd) {
-    match msg {
+fn update(_: Model, msg: &Msg) -> (Model, Cmd<Msg>) {
+    match *msg {
         Msg::Tick(new_time) => (Model(new_time), Cmd::None),
     }
 }
@@ -42,7 +40,7 @@ fn tick() -> Receiver<Tm> {
     rx
 }
 
-fn subscriptions() -> Box<Stream<Item = Msg, Error = ()>> {
+fn subscriptions() -> Sub<Msg> {
     Box::new(tick().map(Msg::Tick))
 }
 
@@ -51,10 +49,10 @@ fn view(model: &Model) -> String {
 }
 
 fn main() {
-    program::Program {
-        init: init,
-        view: view,
-        update: update,
-        subscriptions: subscriptions,
+    Program {
+        init,
+        view,
+        update,
+        subscriptions,
     }.run()
 }

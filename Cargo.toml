@@ -4,9 +4,15 @@ version = "0.1.0"
 authors = ["boxdot <d@zerovolt.org>"]
 
 [[bin]]
+name = "random"
+path = "src/random.rs"
+
+[[bin]]
 name = "time"
 path = "src/time.rs"
 
 [dependencies]
 futures = "0.1"
+rand = "0.4"
 time = "0.1"
+tokio-core = "0.1"
