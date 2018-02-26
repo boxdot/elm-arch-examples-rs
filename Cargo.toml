@@ -3,8 +3,10 @@ name = "elm-architecture"
 version = "0.1.0"
 authors = ["boxdot <d@zerovolt.org>"]
 
+[[bin]]
+name = "time"
+path = "src/time.rs"
+
 [dependencies]
 futures = "0.1"
-tokio = "0.1"
-tokio-io = "0.1"
 time = "0.1"

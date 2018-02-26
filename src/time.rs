@@ -1,20 +1,18 @@
-#![allow(dead_code)]
-
 extern crate futures;
 extern crate time;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
-use time::{Tm, now_utc};
+use time::{now_utc, Tm};
 
-use std::{thread};
+use std::thread;
 
 #[derive(Debug)]
 struct Program<Init, View, Update, Subscriptions> {
     init: Init,
     view: View,
     update: Update,
-    subscriptions: Subscriptions
+    subscriptions: Subscriptions,
 }
 
 struct Model(Tm);
@@ -24,17 +22,17 @@ fn init() -> (Model, Cmd) {
 }
 
 enum Msg {
-    Tick(Tm)
+    Tick(Tm),
 }
 
 enum Cmd {
     None,
-    Msg
+    _Msg(Msg),
 }
 
 fn update(_model: Model, msg: Msg) -> (Model, Cmd) {
     match msg {
-        Msg::Tick(new_time) => (Model(new_time), Cmd::None)
+        Msg::Tick(new_time) => (Model(new_time), Cmd::None),
     }
 }
 
@@ -50,7 +48,7 @@ fn tick() -> Receiver<Tm> {
     rx
 }
 
-fn subscriptions() -> Box<Stream<Item=Msg, Error=()>> {
+fn subscriptions() -> Box<Stream<Item = Msg, Error = ()>> {
     Box::new(tick().map(Msg::Tick))
 }
 
@@ -59,16 +57,19 @@ fn view(model: &Model) -> String {
 }
 
 fn main() {
-    let program = Program{
+    let program = Program {
         init: init,
         view: view,
         update: update,
-        subscriptions: subscriptions
+        subscriptions: subscriptions,
     };
 
-    (program.subscriptions)().fold((program.init)().0, |model, msg| {
-        let (new_model, _cmd) = (program.update)(model, msg);
-        println!("{}", (program.view)(&new_model));
-        Ok(new_model)
-    }).wait().unwrap();
+    (program.subscriptions)()
+        .fold((program.init)().0, |model, msg| {
+            let (new_model, _cmd) = (program.update)(model, msg);
+            println!("{}", (program.view)(&new_model));
+            Ok(new_model)
+        })
+        .wait()
+        .unwrap();
 }
