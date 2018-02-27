@@ -3,12 +3,17 @@ extern crate tokio_core;
 
 use futures::prelude::*;
 use futures::future;
-use futures::sync::mpsc::channel;
-use tokio_core::reactor::Core;
+use futures::sync::mpsc::{channel, Sender};
+use tokio_core::reactor::{Core, Handle};
+
+pub trait CmdWithHandle<Msg> {
+    fn call(self: Box<Self>, handle: Handle) -> Box<Future<Item = Msg, Error = ()>>;
+}
 
 pub enum Cmd<Msg> {
     None,
     Cmd(Box<Future<Item = Msg, Error = ()>>),
+    WithHandle(Box<CmdWithHandle<Msg>>),
 }
 
 impl<Msg: 'static> Cmd<Msg> {
@@ -17,6 +22,13 @@ impl<Msg: 'static> Cmd<Msg> {
         F: FnOnce() -> Msg + 'static,
     {
         Cmd::Cmd(Box::new(future::lazy(|| Ok(f()))))
+    }
+
+    pub fn with_handle<F>(f: F) -> Cmd<Msg>
+    where
+        F: CmdWithHandle<Msg> + 'static,
+    {
+        Cmd::WithHandle(Box::new(f))
     }
 }
 
@@ -35,7 +47,7 @@ impl<I, V, U, S> Program<I, V, U, S> {
         Msg: 'static,
         I: FnOnce() -> (Model, Cmd<Msg>),
         V: Fn(&Model) -> String,
-        U: Fn(Model, &Msg) -> (Model, Cmd<Msg>),
+        U: Fn(Model, Msg) -> (Model, Cmd<Msg>),
         S: FnOnce() -> Box<Stream<Item = Msg, Error = ()>>,
     {
         let Self {
@@ -52,30 +64,37 @@ impl<I, V, U, S> Program<I, V, U, S> {
 
         let (initial_model, initial_cmd) = init();
 
-        let tx = messages_sender.clone();
-        if let Cmd::Cmd(fut) = initial_cmd {
-            handle.spawn(fut.and_then(move |msg| {
-                tx.clone().send(msg).wait().unwrap();
-                Ok(())
-            }));
-        }
+        process_cmd(initial_cmd, handle.clone(), messages_sender.clone());
 
         let program = subscriptions()
             .select(messages)
             .fold(initial_model, |model, msg| {
-                let (new_model, cmd) = update(model, &msg);
-                if let Cmd::Cmd(fut) = cmd {
-                    let tx = messages_sender.clone();
-                    handle.spawn(fut.and_then(move |msg| {
-                        tx.clone().send(msg).wait().unwrap();
-                        Ok(())
-                    }));
-                }
-
+                let (new_model, cmd) = update(model, msg);
+                process_cmd(cmd, handle.clone(), messages_sender.clone());
                 println!("{}", view(&new_model));
                 Ok(new_model)
             });
 
         core.run(program).unwrap();
+    }
+}
+
+fn process_cmd<Msg: 'static>(cmd: Cmd<Msg>, handle: Handle, sender: Sender<Msg>) {
+    match cmd {
+        Cmd::Cmd(fut) => {
+            handle.spawn(fut.and_then(move |msg| {
+                sender.send(msg).wait().unwrap();
+                Ok(())
+            }));
+        }
+        Cmd::WithHandle(make_fut) => handle.spawn(
+            future::ok(handle.clone())
+                .and_then(move |handle| make_fut.call(handle))
+                .and_then(move |msg| {
+                    sender.send(msg).wait().unwrap();
+                    Ok(())
+                }),
+        ),
+        Cmd::None => (),
     }
 }

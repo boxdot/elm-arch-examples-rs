@@ -19,8 +19,8 @@ enum Msg {
     Tick(Tm),
 }
 
-fn update(_: Model, msg: &Msg) -> (Model, Cmd<Msg>) {
-    match *msg {
+fn update(_: Model, msg: Msg) -> (Model, Cmd<Msg>) {
+    match msg {
         Msg::Tick(new_time) => (Model(new_time), Cmd::None),
     }
 }
