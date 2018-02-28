@@ -7,21 +7,38 @@ instead of clicking on some buttons, you usually press keyboard keys, and
 instead of showing HTML, there is just some output to console.
 
 One difference to the pattern is the signature of the function `subscriptions`.
-In Elm it takes a model and depending on it, it returns subscriptions. This
-makes it possible to remove or cancel subscriptions previously created. This is
-not implemented in Rust; the signature is:
+In Elm it takes a model and depending on it, it returns subscriptions. The
+function is executed every time the model is updated. This makes it possible
+to remove or cancel subscriptions previously created.
+
+In Rust, the signature is:
 
 ```rust
-fn subscriptions: () -> Sub<Msg>;
+fn subscriptions: (Model, Handle) -> (Model, Sub<Msg>);
 ```
 
-If you find interesting or challenging to implement this, feel free to create a pull request.
+where `Handle` is `tokio_core::reactor::Handle`.
+
+The function is called only once on initialization. The initial model is passed
+and returned again, since on contrary to Elm we are not having a global state
+but store everything in the model (e.g. Elm tracks open websockets in its
+runtime and so allows magically to send values, even without having a channel
+to the socket.) `Handle` is provided since it is needed in many situations,
+e.g. to establish a connection or create a client.
+
+Practically, it should be possible to call the function after each update of
+the model and update current subscriptions, however, this also means that we
+need some kind of tracking and identification of subscriptions already created.
+If you find it interesting or challenging to implement this, feel free to
+create a pull request.
 
 ## How to run
 
 ```shell
 crate run --bin time
 crate run --bin random
+crate run --bin http
+crate run --bin websocket
 ```
 
 ## License
