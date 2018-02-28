@@ -1,11 +1,13 @@
 extern crate elm_arch;
 extern crate futures;
 extern crate time;
+extern crate tokio_core;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use time::{now_utc, Tm};
 use elm_arch::{Cmd, Program, Sub};
+use tokio_core::reactor::Handle;
 
 use std::thread;
 
@@ -37,8 +39,8 @@ fn tick() -> Receiver<Tm> {
     rx
 }
 
-fn subscriptions() -> Sub<Msg> {
-    Box::new(tick().map(Msg::Tick))
+fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
+    (model, Box::new(tick().map(Msg::Tick)))
 }
 
 fn view(model: &Model) -> String {

@@ -119,8 +119,8 @@ fn on_enter_key() -> Receiver<String> {
     rx
 }
 
-fn subscriptions() -> Sub<Msg> {
-    Box::new(on_enter_key().map(|_| Msg::MorePlease))
+fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
+    (model, Box::new(on_enter_key().map(|_| Msg::MorePlease)))
 }
 
 fn main() {

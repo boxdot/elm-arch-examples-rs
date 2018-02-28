@@ -1,14 +1,17 @@
 extern crate elm_arch;
 extern crate futures;
 extern crate rand;
+extern crate tokio_core;
+
+use std::io::{self, BufRead};
+use std::thread;
 
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use rand::distributions::{Range, Sample};
-use elm_arch::{Cmd, Program, Sub};
+use tokio_core::reactor::Handle;
 
-use std::io::{self, BufRead};
-use std::thread;
+use elm_arch::{Cmd, Program, Sub};
 
 #[derive(Debug)]
 struct Model {
@@ -47,8 +50,8 @@ fn on_enter_key() -> Receiver<String> {
     rx
 }
 
-fn subscriptions() -> Sub<Msg> {
-    Box::new(on_enter_key().map(|_| Msg::Roll))
+fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
+    (model, Box::new(on_enter_key().map(|_| Msg::Roll)))
 }
 
 fn roll_dice() -> u8 {

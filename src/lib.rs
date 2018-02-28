@@ -48,7 +48,7 @@ impl<I, V, U, S> Program<I, V, U, S> {
         I: FnOnce() -> (Model, Cmd<Msg>),
         V: Fn(&Model) -> String,
         U: Fn(Model, Msg) -> (Model, Cmd<Msg>),
-        S: FnOnce() -> Box<Stream<Item = Msg, Error = ()>>,
+        S: FnOnce(Model, Handle) -> (Model, Box<Stream<Item = Msg, Error = ()>>),
     {
         let Self {
             init,
@@ -66,14 +66,13 @@ impl<I, V, U, S> Program<I, V, U, S> {
 
         process_cmd(initial_cmd, handle.clone(), messages_sender.clone());
 
-        let program = subscriptions()
-            .select(messages)
-            .fold(initial_model, |model, msg| {
-                let (new_model, cmd) = update(model, msg);
-                process_cmd(cmd, handle.clone(), messages_sender.clone());
-                println!("{}", view(&new_model));
-                Ok(new_model)
-            });
+        let (model, subs) = subscriptions(initial_model, handle.clone());
+        let program = subs.select(messages).fold(model, |model, msg| {
+            let (new_model, cmd) = update(model, msg);
+            process_cmd(cmd, handle.clone(), messages_sender.clone());
+            println!("{}", view(&new_model));
+            Ok(new_model)
+        });
 
         core.run(program).unwrap();
     }
