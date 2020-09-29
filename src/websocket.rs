@@ -33,7 +33,7 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     match msg {
         Msg::Input(new_input) => {
             model.input = new_input;
-            (model, Cmd::new(|| Msg::Send))
+            (model, Cmd::Msg(Msg::Send))
         }
         Msg::Send => {
             let mut input = String::new();
@@ -42,10 +42,10 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
                 .ws_sender
                 .clone()
                 .map(|mut tx| {
-                    Cmd::Cmd(Box::pin(async move {
+                    Cmd::boxed(async move {
                         tx.send(input).await.unwrap();
                         Msg::Sent
-                    }))
+                    })
                 })
                 .unwrap_or(Cmd::None);
             (model, cmd)

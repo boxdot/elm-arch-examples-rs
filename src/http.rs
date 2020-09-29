@@ -36,10 +36,7 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     match msg {
         Msg::MorePlease => {
             let topic = model.topic.clone();
-            (
-                model,
-                Cmd::Cmd(Box::pin(get_random_gif(topic).map(Msg::NewGif))),
-            )
+            (model, Cmd::boxed(get_random_gif(topic).map(Msg::NewGif)))
         }
         Msg::NewGif(res) => {
             match res {

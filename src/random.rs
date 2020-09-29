@@ -21,7 +21,7 @@ enum Msg {
 
 fn update(model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     match msg {
-        Msg::Roll => (model, Cmd::new(|| Msg::NewFace(roll_dice()))),
+        Msg::Roll => (model, Cmd::Msg(Msg::NewFace(roll_dice()))),
         Msg::NewFace(new_face) => (Model { die_face: new_face }, Cmd::None),
     }
 }
