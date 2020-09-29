@@ -1,15 +1,6 @@
-extern crate elm_arch;
-extern crate futures;
-extern crate rand;
-extern crate tokio_core;
-
-use std::io::{self, BufRead};
-use std::thread;
-
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver};
-use rand::distributions::{Range, Sample};
-use tokio_core::reactor::Handle;
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::{channel, Receiver};
 
 use elm_arch::{Cmd, Program, Sub};
 
@@ -39,33 +30,41 @@ fn init() -> (Model, Cmd<Msg>) {
     (Model { die_face: 1 }, Cmd::None)
 }
 
-fn on_enter_key() -> Receiver<String> {
+fn on_enter_key(handle: Handle) -> Receiver<String> {
     let (tx, rx) = channel::<String>(1);
-    thread::spawn(move || {
-        let stdin = io::stdin();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let stdin = std::io::stdin();
         for line in stdin.lock().lines() {
-            tx.clone().send(line.unwrap()).wait().unwrap();
+            let mut tx = tx.clone();
+            handle.spawn(async move {
+                tx.send(line.unwrap()).await.unwrap();
+            });
         }
     });
     rx
 }
 
-fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
-    (model, Box::new(on_enter_key().map(|_| Msg::Roll)))
+fn subscriptions(model: Model, handle: Handle) -> (Model, Sub<Msg>) {
+    (model, Box::pin(on_enter_key(handle).map(|_| Msg::Roll)))
 }
 
 fn roll_dice() -> u8 {
-    let mut between = Range::new(1, 6);
+    use rand::distributions::{Distribution, Uniform};
+    let between = Uniform::from(1..6);
     let mut rng = rand::thread_rng();
     between.sample(&mut rng)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("Please, press enter!");
     Program {
         init,
         view,
         update,
         subscriptions,
-    }.run()
+    }
+    .run()
+    .await;
 }

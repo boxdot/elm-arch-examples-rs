@@ -1,19 +1,11 @@
-extern crate elm_arch;
-extern crate failure;
-extern crate futures;
-extern crate hyper;
-extern crate hyper_tls;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate tokio_core;
+use elm_arch::{Cmd, Program, Sub};
 
-use elm_arch::{Cmd, CmdWithHandle, Program, Sub};
-
+use anyhow::Error;
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver};
-use tokio_core::reactor::Handle;
-use failure::Error;
+use hyper_tls::HttpsConnector;
+use serde::Deserialize;
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::{channel, Receiver};
 
 use std::io::{self, BufRead};
 use std::thread;
@@ -44,7 +36,10 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     match msg {
         Msg::MorePlease => {
             let topic = model.topic.clone();
-            (model, Cmd::with_handle(GetRandomGif(topic)))
+            (
+                model,
+                Cmd::Cmd(Box::pin(get_random_gif(topic).map(Msg::NewGif))),
+            )
         }
         Msg::NewGif(res) => {
             match res {
@@ -72,63 +67,63 @@ struct ResponseData {
     url: String,
 }
 
-struct GetRandomGif(String);
+async fn get_random_gif(topic: String) -> Result<String, Error> {
+    let https = HttpsConnector::new();
+    let client = hyper::Client::builder().build::<_, hyper::Body>(https);
+    let uri = format!(
+        "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={}",
+        topic
+    )
+    .parse()
+    .unwrap();
+    let mut response = client.get(uri).await?;
 
-impl CmdWithHandle<Msg> for GetRandomGif {
-    fn call(self: Box<Self>, handle: Handle) -> Box<Future<Item = Msg, Error = ()>> {
-        let client = hyper::Client::configure()
-            .connector(hyper_tls::HttpsConnector::new(1, &handle).unwrap())
-            .build(&handle);
+    let body = response.body_mut();
+    let mut output = Vec::new();
 
-        let uri = format!(
-            "https://api.giphsy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={}",
-            self.0
-        ).parse()
-            .unwrap();
-
-        Box::new(
-            client
-                .get(uri)
-                .map_err(Error::from)
-                .and_then(|resp| resp.body().concat2().map_err(Error::from))
-                .and_then(|chunk| Ok(serde_json::from_slice(&chunk)?))
-                .map(|value: Response| value.data.url)
-                .then(|res| {
-                    Ok(match res {
-                        Ok(gif_url) => Msg::NewGif(Ok(gif_url)),
-                        Err(e) => Msg::NewGif(Err(e)),
-                    })
-                })
-                .map_err(|_: Error| ()),
-        )
+    while let Some(chunk) = body.next().await {
+        let bytes = chunk?;
+        output.extend(&bytes[..]);
     }
+
+    let value: Response = serde_json::from_slice(&output)?;
+    Ok(value.data.url)
 }
 
 fn view(model: &Model) -> String {
     format!("{:?}", model)
 }
 
-fn on_enter_key() -> Receiver<String> {
+fn on_enter_key(handle: Handle) -> Receiver<String> {
     let (tx, rx) = channel::<String>(1);
     thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
-            tx.clone().send(line.unwrap()).wait().unwrap();
+            let mut tx = tx.clone();
+            handle.spawn(async move {
+                tx.send(line.unwrap()).await.unwrap();
+            });
         }
     });
     rx
 }
 
-fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
-    (model, Box::new(on_enter_key().map(|_| Msg::MorePlease)))
+fn subscriptions(model: Model, handle: Handle) -> (Model, Sub<Msg>) {
+    (
+        model,
+        Box::pin(on_enter_key(handle).map(|_| Msg::MorePlease)),
+    )
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("Press any key...");
     Program {
         init,
         view,
         update,
         subscriptions,
-    }.run()
+    }
+    .run()
+    .await;
 }

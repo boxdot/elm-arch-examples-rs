@@ -1,24 +1,19 @@
-extern crate elm_arch;
-extern crate futures;
-extern crate time;
-extern crate tokio_core;
-
-use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver};
-use time::{now_utc, Tm};
 use elm_arch::{Cmd, Program, Sub};
-use tokio_core::reactor::Handle;
+use futures::prelude::*;
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::{channel, Receiver};
 
 use std::thread;
+use std::time::Instant;
 
-struct Model(Tm);
+struct Model(Instant);
 
 fn init() -> (Model, Cmd<Msg>) {
-    (Model(now_utc()), Cmd::None)
+    (Model(Instant::now()), Cmd::None)
 }
 
 enum Msg {
-    Tick(Tm),
+    Tick(Instant),
 }
 
 fn update(_: Model, msg: Msg) -> (Model, Cmd<Msg>) {
@@ -27,31 +22,35 @@ fn update(_: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn tick() -> Receiver<Tm> {
-    let (tx, rx) = channel::<Tm>(1);
-    thread::spawn(move || -> Result<(), ()> {
-        loop {
-            let now = now_utc();
-            tx.clone().send(now).wait().unwrap();
-            thread::sleep(std::time::Duration::from_secs(1));
-        }
+fn tick(handle: Handle) -> Receiver<Instant> {
+    let (tx, rx) = channel::<Instant>(1);
+    thread::spawn(move || loop {
+        let mut tx = tx.clone();
+        let now = Instant::now();
+        handle.spawn(async move {
+            tx.send(now).await.unwrap();
+        });
+        thread::sleep(std::time::Duration::from_secs(1));
     });
     rx
 }
 
-fn subscriptions(model: Model, _: Handle) -> (Model, Sub<Msg>) {
-    (model, Box::new(tick().map(Msg::Tick)))
+fn subscriptions(model: Model, handle: Handle) -> (Model, Sub<Msg>) {
+    (model, Box::pin(tick(handle).map(Msg::Tick)))
 }
 
 fn view(model: &Model) -> String {
     format!("{:?}", model.0)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     Program {
         init,
         view,
         update,
         subscriptions,
-    }.run()
+    }
+    .run()
+    .await;
 }

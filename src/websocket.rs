@@ -1,22 +1,13 @@
-extern crate elm_arch;
-extern crate failure;
-extern crate futures;
-extern crate tokio_core;
-extern crate tokio_tungstenite;
-extern crate tungstenite;
-extern crate url;
+use elm_arch::{BoxStream, Cmd, Program, Sub};
+
+use futures::prelude::*;
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+use url::Url;
 
 use std::io::{self, BufRead};
 use std::thread;
-
-use failure::Error;
-use futures::sync::mpsc::{channel, Receiver, Sender};
-use futures::{Future, Sink, Stream};
-use tokio_core::reactor::Handle;
-use tokio_tungstenite::connect_async;
-use tungstenite::Message;
-
-use elm_arch::{Cmd, Program, Sub};
 
 #[derive(Debug, Default)]
 struct Model {
@@ -50,11 +41,11 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
             let cmd = model
                 .ws_sender
                 .clone()
-                .map(|tx| {
-                    Cmd::new(move || {
-                        tx.send(input).wait().unwrap();
+                .map(|mut tx| {
+                    Cmd::Cmd(Box::pin(async move {
+                        tx.send(input).await.unwrap();
                         Msg::Sent
-                    })
+                    }))
                 })
                 .unwrap_or(Cmd::None);
             (model, cmd)
@@ -68,59 +59,50 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn websocket(
-    url: &str,
-    rx: Receiver<String>,
-    handle: Handle,
-) -> Box<Stream<Item = String, Error = ()>> {
-    let url = url::Url::parse(url).unwrap();
-    let rx = rx.map_err(|_| panic!("error on rx"));
-    let stream = connect_async(url, handle.remote().clone())
-        .map(move |(ws_stream, _)| {
-            let (sink, stream) = ws_stream.split();
+fn websocket(url: &str, rx: Receiver<String>, handle: Handle) -> BoxStream<String> {
+    let ws_stream = connect_async(Url::parse(url).unwrap())
+        .map(move |res| {
+            let (sink, stream) = res.unwrap().0.split();
+            handle.spawn(async move {
+                rx.map(|msg| Ok(Message::Text(msg)))
+                    .forward(sink)
+                    .await
+                    .unwrap();
+            });
 
-            let sink = sink.sink_map_err(|_| ());
-            let rx = rx.map(Message::Text)
-                .map_err(|_| ())
-                .forward(sink)
-                .map(|_| ())
-                .then(|_| Ok(()));
-            handle.spawn(rx);
-
-            stream
-                .filter_map(|msg| match msg {
-                    Message::Text(text) => Some(text),
+            stream.filter_map(|msg| {
+                future::ready(match msg {
+                    Ok(Message::Text(text)) => Some(text),
                     _ => None,
                 })
-                .map_err(Error::from)
+            })
         })
-        .map_err(Error::from)
-        .flatten_stream()
-        .map_err(|e| {
-            eprintln!("Error during the websocket handshake occured: {}", e);
-        });
-    Box::new(stream)
+        .flatten_stream();
+    Box::pin(ws_stream)
 }
 
-fn on_enter_key() -> Receiver<String> {
-    let (tx, rx) = channel::<String>(0);
+fn on_enter_key(handle: Handle) -> Receiver<String> {
+    let (tx, rx) = channel::<String>(1);
     thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
-            tx.clone().send(line.unwrap()).wait().unwrap();
+            let mut tx = tx.clone();
+            handle.spawn(async move {
+                tx.send(line.unwrap()).await.unwrap();
+            });
         }
     });
     rx
 }
 
 fn subscriptions(mut model: Model, handle: Handle) -> (Model, Sub<Msg>) {
-    let stdin = on_enter_key().map(Msg::Input);
+    let stdin = on_enter_key(handle.clone()).map(Msg::Input);
 
-    let (tx, rx) = channel(0);
+    let (tx, rx) = channel(64);
     let ws_stream = websocket("ws://echo.websocket.org", rx, handle).map(Msg::NewMessage);
     model.ws_sender = Some(tx);
 
-    (model, Box::new(stdin.select(ws_stream)))
+    (model, Box::pin(stream::select(stdin, ws_stream)))
 }
 
 fn view(model: &Model) -> String {
@@ -135,12 +117,15 @@ Messages:
     )
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("Enter a message and press enter...");
     Program {
         init,
         view,
         update,
         subscriptions,
-    }.run()
+    }
+    .run()
+    .await;
 }

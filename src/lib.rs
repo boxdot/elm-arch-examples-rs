@@ -1,38 +1,38 @@
-extern crate futures;
-extern crate tokio_core;
-
 use futures::prelude::*;
-use futures::future;
-use futures::sync::mpsc::{channel, Sender};
-use tokio_core::reactor::{Core, Handle};
+use futures::{future, stream};
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::{channel, Sender};
+
+pub type BoxFuture<T> = future::BoxFuture<'static, T>;
+pub type BoxStream<T> = stream::BoxStream<'static, T>;
 
 pub trait CmdWithHandle<Msg> {
-    fn call(self: Box<Self>, handle: Handle) -> Box<Future<Item = Msg, Error = ()>>;
+    fn call(self: Box<Self>, handle: Handle) -> BoxFuture<Msg>;
 }
 
 pub enum Cmd<Msg> {
     None,
-    Cmd(Box<Future<Item = Msg, Error = ()>>),
-    WithHandle(Box<CmdWithHandle<Msg>>),
+    Cmd(BoxFuture<Msg>),
+    WithHandle(Box<dyn CmdWithHandle<Msg> + Send>),
 }
 
 impl<Msg: 'static> Cmd<Msg> {
     pub fn new<F>(f: F) -> Cmd<Msg>
     where
-        F: FnOnce() -> Msg + 'static,
+        F: FnOnce() -> Msg + Send + 'static,
     {
-        Cmd::Cmd(Box::new(future::lazy(|| Ok(f()))))
+        Cmd::Cmd(Box::pin(future::lazy(move |_| f())))
     }
 
     pub fn with_handle<F>(f: F) -> Cmd<Msg>
     where
-        F: CmdWithHandle<Msg> + 'static,
+        F: CmdWithHandle<Msg> + Send + 'static,
     {
         Cmd::WithHandle(Box::new(f))
     }
 }
 
-pub type Sub<Msg> = Box<Stream<Item = Msg, Error = ()>>;
+pub type Sub<Msg> = BoxStream<Msg>;
 
 pub struct Program<Init, View, Update, Subscriptions> {
     pub init: Init,
@@ -42,13 +42,13 @@ pub struct Program<Init, View, Update, Subscriptions> {
 }
 
 impl<I, V, U, S> Program<I, V, U, S> {
-    pub fn run<Model, Msg>(self)
+    pub async fn run<Model, Msg>(self)
     where
-        Msg: 'static,
+        Msg: Send + 'static,
         I: FnOnce() -> (Model, Cmd<Msg>),
         V: Fn(&Model) -> String,
         U: Fn(Model, Msg) -> (Model, Cmd<Msg>),
-        S: FnOnce(Model, Handle) -> (Model, Box<Stream<Item = Msg, Error = ()>>),
+        S: FnOnce(Model, Handle) -> (Model, BoxStream<Msg>),
     {
         let Self {
             init,
@@ -57,43 +57,42 @@ impl<I, V, U, S> Program<I, V, U, S> {
             subscriptions,
         } = self;
 
-        let mut core = Core::new().unwrap();
-        let handle = core.handle();
-
-        let (messages_sender, messages) = channel::<Msg>(1);
+        let (msg_tx, msg_rx) = channel::<Msg>(1);
 
         let (initial_model, initial_cmd) = init();
 
-        process_cmd(initial_cmd, handle.clone(), messages_sender.clone());
+        process_cmd(initial_cmd, msg_tx.clone());
 
-        let (model, subs) = subscriptions(initial_model, handle.clone());
-        let program = subs.select(messages).fold(model, |model, msg| {
+        let (model, subs) = subscriptions(initial_model, Handle::current());
+        let program = stream::select(subs, msg_rx).fold(model, |model, msg| {
             let (new_model, cmd) = update(model, msg);
-            process_cmd(cmd, handle.clone(), messages_sender.clone());
+            process_cmd(cmd, msg_tx.clone());
             println!("{}", view(&new_model));
-            Ok(new_model)
+            future::ready(new_model)
         });
 
-        core.run(program).unwrap();
+        program.await;
     }
 }
 
-fn process_cmd<Msg: 'static>(cmd: Cmd<Msg>, handle: Handle, sender: Sender<Msg>) {
+fn process_cmd<Msg: Send + 'static>(cmd: Cmd<Msg>, mut tx: Sender<Msg>) {
     match cmd {
         Cmd::Cmd(fut) => {
-            handle.spawn(fut.and_then(move |msg| {
-                sender.send(msg).wait().unwrap();
-                Ok(())
-            }));
+            tokio::spawn(async move {
+                let msg = fut.await;
+                if let Err(e) = tx.send(msg).await {
+                    panic!("channel closed: {}", e);
+                }
+            });
         }
-        Cmd::WithHandle(make_fut) => handle.spawn(
-            future::ok(handle.clone())
-                .and_then(move |handle| make_fut.call(handle))
-                .and_then(move |msg| {
-                    sender.send(msg).wait().unwrap();
-                    Ok(())
-                }),
-        ),
+        Cmd::WithHandle(make_fut) => {
+            tokio::spawn(async move {
+                let msg = make_fut.call(Handle::current()).await;
+                if let Err(e) = tx.send(msg).await {
+                    panic!("channel closed: {}", e);
+                }
+            });
+        }
         Cmd::None => (),
     }
 }
