@@ -1,6 +1,5 @@
 use futures::prelude::*;
 use futures::{future, stream};
-use tokio::runtime::Handle;
 use tokio::sync::mpsc::{channel, Sender};
 
 pub type BoxFuture<T> = future::BoxFuture<'static, T>;
@@ -36,7 +35,7 @@ impl<I, V, U, S> Program<I, V, U, S> {
         I: FnOnce() -> (Model, Cmd<Msg>),
         V: Fn(&Model) -> String,
         U: Fn(Model, Msg) -> (Model, Cmd<Msg>),
-        S: FnOnce(Model, Handle) -> (Model, BoxStream<Msg>),
+        S: FnOnce(Model) -> (Model, BoxStream<Msg>),
     {
         let Self {
             init,
@@ -51,7 +50,7 @@ impl<I, V, U, S> Program<I, V, U, S> {
 
         process_cmd(initial_cmd, msg_tx.clone());
 
-        let (model, subs) = subscriptions(initial_model, Handle::current());
+        let (model, subs) = subscriptions(initial_model);
         let program = stream::select(subs, msg_rx).fold(model, |model, msg| {
             let (new_model, cmd) = update(model, msg);
             process_cmd(cmd, msg_tx.clone());

@@ -22,8 +22,9 @@ fn update(_: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn tick(handle: Handle) -> Receiver<Instant> {
+fn tick() -> Receiver<Instant> {
     let (tx, rx) = channel::<Instant>(1);
+    let handle = Handle::current();
     thread::spawn(move || loop {
         let mut tx = tx.clone();
         let now = Instant::now();
@@ -35,8 +36,8 @@ fn tick(handle: Handle) -> Receiver<Instant> {
     rx
 }
 
-fn subscriptions(model: Model, handle: Handle) -> (Model, Sub<Msg>) {
-    (model, Box::pin(tick(handle).map(Msg::Tick)))
+fn subscriptions(model: Model) -> (Model, Sub<Msg>) {
+    (model, Box::pin(tick().map(Msg::Tick)))
 }
 
 fn view(model: &Model) -> String {

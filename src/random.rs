@@ -30,8 +30,9 @@ fn init() -> (Model, Cmd<Msg>) {
     (Model { die_face: 1 }, Cmd::None)
 }
 
-fn on_enter_key(handle: Handle) -> Receiver<String> {
+fn on_enter_key() -> Receiver<String> {
     let (tx, rx) = channel::<String>(1);
+    let handle = Handle::current();
     std::thread::spawn(move || {
         use std::io::BufRead;
         let stdin = std::io::stdin();
@@ -45,8 +46,8 @@ fn on_enter_key(handle: Handle) -> Receiver<String> {
     rx
 }
 
-fn subscriptions(model: Model, handle: Handle) -> (Model, Sub<Msg>) {
-    (model, Box::pin(on_enter_key(handle).map(|_| Msg::Roll)))
+fn subscriptions(model: Model) -> (Model, Sub<Msg>) {
+    (model, Box::pin(on_enter_key().map(|_| Msg::Roll)))
 }
 
 fn roll_dice() -> u8 {

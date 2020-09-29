@@ -59,11 +59,11 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn websocket(url: &str, rx: Receiver<String>, handle: Handle) -> BoxStream<String> {
+fn websocket(url: &str, rx: Receiver<String>) -> BoxStream<String> {
     let ws_stream = connect_async(Url::parse(url).unwrap())
         .map(move |res| {
             let (sink, stream) = res.unwrap().0.split();
-            handle.spawn(async move {
+            tokio::spawn(async move {
                 rx.map(|msg| Ok(Message::Text(msg)))
                     .forward(sink)
                     .await
@@ -81,8 +81,9 @@ fn websocket(url: &str, rx: Receiver<String>, handle: Handle) -> BoxStream<Strin
     Box::pin(ws_stream)
 }
 
-fn on_enter_key(handle: Handle) -> Receiver<String> {
+fn on_enter_key() -> Receiver<String> {
     let (tx, rx) = channel::<String>(1);
+    let handle = Handle::current();
     thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
@@ -95,11 +96,11 @@ fn on_enter_key(handle: Handle) -> Receiver<String> {
     rx
 }
 
-fn subscriptions(mut model: Model, handle: Handle) -> (Model, Sub<Msg>) {
-    let stdin = on_enter_key(handle.clone()).map(Msg::Input);
+fn subscriptions(mut model: Model) -> (Model, Sub<Msg>) {
+    let stdin = on_enter_key().map(Msg::Input);
 
     let (tx, rx) = channel(64);
-    let ws_stream = websocket("ws://echo.websocket.org", rx, handle).map(Msg::NewMessage);
+    let ws_stream = websocket("ws://echo.websocket.org", rx).map(Msg::NewMessage);
     model.ws_sender = Some(tx);
 
     (model, Box::pin(stream::select(stdin, ws_stream)))
