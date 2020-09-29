@@ -6,14 +6,9 @@ use tokio::sync::mpsc::{channel, Sender};
 pub type BoxFuture<T> = future::BoxFuture<'static, T>;
 pub type BoxStream<T> = stream::BoxStream<'static, T>;
 
-pub trait CmdWithHandle<Msg> {
-    fn call(self: Box<Self>, handle: Handle) -> BoxFuture<Msg>;
-}
-
 pub enum Cmd<Msg> {
     None,
     Cmd(BoxFuture<Msg>),
-    WithHandle(Box<dyn CmdWithHandle<Msg> + Send>),
 }
 
 impl<Msg: 'static> Cmd<Msg> {
@@ -22,13 +17,6 @@ impl<Msg: 'static> Cmd<Msg> {
         F: FnOnce() -> Msg + Send + 'static,
     {
         Cmd::Cmd(Box::pin(future::lazy(move |_| f())))
-    }
-
-    pub fn with_handle<F>(f: F) -> Cmd<Msg>
-    where
-        F: CmdWithHandle<Msg> + Send + 'static,
-    {
-        Cmd::WithHandle(Box::new(f))
     }
 }
 
@@ -80,14 +68,6 @@ fn process_cmd<Msg: Send + 'static>(cmd: Cmd<Msg>, mut tx: Sender<Msg>) {
         Cmd::Cmd(fut) => {
             tokio::spawn(async move {
                 let msg = fut.await;
-                if let Err(e) = tx.send(msg).await {
-                    panic!("channel closed: {}", e);
-                }
-            });
-        }
-        Cmd::WithHandle(make_fut) => {
-            tokio::spawn(async move {
-                let msg = make_fut.call(Handle::current()).await;
                 if let Err(e) = tx.send(msg).await {
                     panic!("channel closed: {}", e);
                 }
