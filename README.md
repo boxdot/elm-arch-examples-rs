@@ -32,10 +32,10 @@ create a pull request.
 ## How to run
 
 ```shell
-crate run --bin time
-crate run --bin random
-crate run --bin http
-crate run --bin websocket
+cargo run --bin time
+cargo run --bin random
+cargo run --bin http
+cargo run --bin websocket
 ```
 
 ## License

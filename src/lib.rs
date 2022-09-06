@@ -51,7 +51,8 @@ impl<I, V, U, S> Program<I, V, U, S> {
         process_cmd(initial_cmd, msg_tx.clone());
 
         let (model, subs) = subscriptions(initial_model);
-        let program = stream::select(subs, msg_rx).fold(model, |model, msg| {
+        let msgs = tokio_stream::wrappers::ReceiverStream::new(msg_rx);
+        let program = stream::select(subs, msgs).fold(model, |model, msg| {
             let (new_model, cmd) = update(model, msg);
             process_cmd(cmd, msg_tx.clone());
             println!("{}", view(&new_model));
@@ -62,7 +63,7 @@ impl<I, V, U, S> Program<I, V, U, S> {
     }
 }
 
-fn process_cmd<Msg: Send + 'static>(cmd: Cmd<Msg>, mut tx: Sender<Msg>) {
+fn process_cmd<Msg: Send + 'static>(cmd: Cmd<Msg>, tx: Sender<Msg>) {
     match cmd {
         Cmd::Future(fut) => {
             tokio::spawn(async move {

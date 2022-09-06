@@ -2,7 +2,7 @@
 name = "elm-arch-examples"
 version = "0.1.0"
 authors = ["boxdot <d@zerovolt.org>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "elm_arch"
@@ -25,13 +25,14 @@ name = "websocket"
 path = "src/websocket.rs"
 
 [dependencies]
-anyhow = "1.0.32"
-futures = "0.3.5"
-hyper = "0.13.8"
-hyper-tls = "0.4.3"
-rand = "0.7.3"
-serde = { version = "1.0.116", features = ["derive"] }
-serde_json = "1.0.57"
-tokio = { version = "0.2.22", features = ["macros", "io-std"] }
-tokio-tungstenite = "0.11.0"
-url = "2.1.1"
+anyhow = "1.0.64"
+futures = "0.3.24"
+hyper = { version = "0.14.20", features = ["client", "http1"] }
+hyper-tls = "0.5.0"
+rand = "0.8.5"
+serde = { version = "1.0.144", features = ["derive"] }
+serde_json = "1.0.85"
+tokio = { version = "1.21.0", features = ["macros", "io-std", "rt-multi-thread"] }
+tokio-stream = { version = "0.1.9", features = ["io-util"] }
+tokio-tungstenite = "0.17.2"
+url = "2.2.2"

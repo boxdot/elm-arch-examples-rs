@@ -1,14 +1,11 @@
+use anyhow::{bail, Error};
 use elm_arch::{Cmd, Program, Sub};
-
-use anyhow::Error;
-use futures::prelude::*;
+use futures::{FutureExt, Stream};
 use hyper_tls::HttpsConnector;
 use serde::Deserialize;
-use tokio::runtime::Handle;
-use tokio::sync::mpsc::{channel, Receiver};
-
-use std::io::{self, BufRead};
-use std::thread;
+use tokio::io::AsyncBufReadExt;
+use tokio_stream::wrappers::LinesStream;
+use tokio_stream::StreamExt;
 
 #[derive(Debug)]
 struct Model {
@@ -59,51 +56,36 @@ struct Response {
 
 #[derive(Debug, Deserialize)]
 struct ResponseData {
-    id: String,
-    slug: String,
     url: String,
 }
 
 async fn get_random_gif(topic: String) -> Result<String, Error> {
     let https = HttpsConnector::new();
-    let client = hyper::Client::builder().build::<_, hyper::Body>(https);
-    let uri = format!(
-        "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={}",
-        topic
-    )
-    .parse()
-    .unwrap();
-    let mut response = client.get(uri).await?;
-
-    let body = response.body_mut();
-    let mut output = Vec::new();
-
-    while let Some(chunk) = body.next().await {
-        let bytes = chunk?;
-        output.extend(&bytes[..]);
+    let client = hyper::client::Client::builder().build::<_, hyper::Body>(https);
+    let uri = format!("https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={topic}",)
+        .parse()
+        .unwrap();
+    let response = client.get(uri).await?;
+    let status = response.status();
+    let data = hyper::body::to_bytes(response.into_body()).await?;
+    if !status.is_success() {
+        bail!(
+            "request failed with body: {}",
+            String::from_utf8_lossy(&data)
+        );
     }
-
-    let value: Response = serde_json::from_slice(&output)?;
+    let value: Response = serde_json::from_slice(&data)?;
     Ok(value.data.url)
 }
 
 fn view(model: &Model) -> String {
-    format!("{:?}", model)
+    format!("{model:?}")
 }
 
-fn on_enter_key() -> Receiver<String> {
-    let (tx, rx) = channel::<String>(1);
-    let handle = Handle::current();
-    thread::spawn(move || {
-        let stdin = io::stdin();
-        for line in stdin.lock().lines() {
-            let mut tx = tx.clone();
-            handle.spawn(async move {
-                tx.send(line.unwrap()).await.unwrap();
-            });
-        }
-    });
-    rx
+fn on_enter_key() -> impl Stream<Item = String> {
+    let stdin = tokio::io::stdin();
+    let buf = tokio::io::BufReader::new(stdin);
+    LinesStream::new(buf.lines()).map(Result::unwrap)
 }
 
 fn subscriptions(model: Model) -> (Model, Sub<Msg>) {
