@@ -1,16 +1,16 @@
-use futures::prelude::*;
-use tokio::runtime::Handle;
-use tokio::sync::mpsc::{channel, Receiver};
-
 use elm_arch::{Cmd, Program, Sub};
+use futures::{Stream, StreamExt};
+use tokio::io::AsyncBufReadExt;
+use tokio_stream::wrappers::LinesStream;
 
 #[derive(Debug)]
 struct Model {
+    #[allow(dead_code)]
     die_face: u8,
 }
 
 fn view(model: &Model) -> String {
-    format!("{:?}", model)
+    format!("{model:?}")
 }
 
 #[derive(Debug)]
@@ -30,20 +30,10 @@ fn init() -> (Model, Cmd<Msg>) {
     (Model { die_face: 1 }, Cmd::None)
 }
 
-fn on_enter_key() -> Receiver<String> {
-    let (tx, rx) = channel::<String>(1);
-    let handle = Handle::current();
-    std::thread::spawn(move || {
-        use std::io::BufRead;
-        let stdin = std::io::stdin();
-        for line in stdin.lock().lines() {
-            let mut tx = tx.clone();
-            handle.spawn(async move {
-                tx.send(line.unwrap()).await.unwrap();
-            });
-        }
-    });
-    rx
+fn on_enter_key() -> impl Stream<Item = String> {
+    let stdin = tokio::io::stdin();
+    let buf = tokio::io::BufReader::new(stdin);
+    LinesStream::new(buf.lines()).map(Result::unwrap)
 }
 
 fn subscriptions(model: Model) -> (Model, Sub<Msg>) {

@@ -1,10 +1,9 @@
+use std::time::Duration;
+
 use elm_arch::{Cmd, Program, Sub};
 use futures::prelude::*;
-use tokio::runtime::Handle;
-use tokio::sync::mpsc::{channel, Receiver};
-
-use std::thread;
-use std::time::Instant;
+use tokio::time::Instant;
+use tokio_stream::wrappers::IntervalStream;
 
 struct Model(Instant);
 
@@ -22,18 +21,9 @@ fn update(_: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn tick() -> Receiver<Instant> {
-    let (tx, rx) = channel::<Instant>(1);
-    let handle = Handle::current();
-    thread::spawn(move || loop {
-        let mut tx = tx.clone();
-        let now = Instant::now();
-        handle.spawn(async move {
-            tx.send(now).await.unwrap();
-        });
-        thread::sleep(std::time::Duration::from_secs(1));
-    });
-    rx
+fn tick() -> impl Stream<Item = Instant> {
+    let interval = tokio::time::interval(Duration::from_secs(1));
+    IntervalStream::new(interval)
 }
 
 fn subscriptions(model: Model) -> (Model, Sub<Msg>) {

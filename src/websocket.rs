@@ -1,13 +1,11 @@
-use elm_arch::{BoxStream, Cmd, Program, Sub};
+use elm_arch::{Cmd, Program, Sub};
 
 use futures::prelude::*;
-use tokio::runtime::Handle;
+use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio_stream::wrappers::LinesStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
-
-use std::io::{self, BufRead};
-use std::thread;
 
 #[derive(Debug, Default)]
 struct Model {
@@ -36,12 +34,11 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
             (model, Cmd::Msg(Msg::Send))
         }
         Msg::Send => {
-            let mut input = String::new();
-            std::mem::swap(&mut model.input, &mut input);
+            let input = std::mem::take(&mut model.input);
             let cmd = model
                 .ws_sender
                 .clone()
-                .map(|mut tx| {
+                .map(|tx| {
                     Cmd::boxed(async move {
                         tx.send(input).await.unwrap();
                         Msg::Sent
@@ -59,48 +56,41 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn websocket(url: &str, rx: Receiver<String>) -> BoxStream<String> {
-    let ws_stream = connect_async(Url::parse(url).unwrap())
+fn websocket(url: Url, mut rx: Receiver<String>) -> impl Stream<Item = String> {
+    connect_async(url)
         .map(move |res| {
-            let (sink, stream) = res.unwrap().0.split();
+            let (ws_stream, _) = res.unwrap();
+            let (mut sink, stream) = ws_stream.split();
+
             tokio::spawn(async move {
-                rx.map(|msg| Ok(Message::Text(msg)))
-                    .forward(sink)
-                    .await
-                    .unwrap();
+                while let Some(msg) = rx.recv().await {
+                    sink.send(Message::Text(msg)).await.unwrap();
+                }
             });
 
-            stream.filter_map(|msg| {
-                future::ready(match msg {
-                    Ok(Message::Text(text)) => Some(text),
-                    _ => None,
-                })
+            stream.filter_map(|msg| async move {
+                if let Ok(Message::Text(text)) = msg {
+                    Some(text)
+                } else {
+                    None
+                }
             })
         })
-        .flatten_stream();
-    Box::pin(ws_stream)
+        .flatten_stream()
 }
 
-fn on_enter_key() -> Receiver<String> {
-    let (tx, rx) = channel::<String>(1);
-    let handle = Handle::current();
-    thread::spawn(move || {
-        let stdin = io::stdin();
-        for line in stdin.lock().lines() {
-            let mut tx = tx.clone();
-            handle.spawn(async move {
-                tx.send(line.unwrap()).await.unwrap();
-            });
-        }
-    });
-    rx
+fn on_enter_key() -> impl Stream<Item = String> {
+    let stdin = tokio::io::stdin();
+    let buf = tokio::io::BufReader::new(stdin);
+    LinesStream::new(buf.lines()).map(Result::unwrap)
 }
 
 fn subscriptions(mut model: Model) -> (Model, Sub<Msg>) {
     let stdin = on_enter_key().map(Msg::Input);
 
     let (tx, rx) = channel(64);
-    let ws_stream = websocket("ws://echo.websocket.org", rx).map(Msg::NewMessage);
+    let ws_stream =
+        websocket("ws://echo.websocket.events".parse().unwrap(), rx).map(Msg::NewMessage);
     model.ws_sender = Some(tx);
 
     (model, Box::pin(stream::select(stdin, ws_stream)))
