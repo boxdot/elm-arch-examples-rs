@@ -68,7 +68,7 @@ fn tick() -> (CancellationToken, impl Stream<Item = Instant>) {
         cancel.clone().cancelled_owned().into_stream().map(|_| None),
     )
     .take_while(|time| ready(time.is_some()))
-    .filter_map(|time| ready(time));
+    .filter_map(ready);
     (cancel, stream)
 }
 
