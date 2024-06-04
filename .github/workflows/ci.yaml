@@ -30,7 +30,7 @@ jobs:
           components: clippy
       - run: cargo clippy --locked --all-features
 
-  build-gnu:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
