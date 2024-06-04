@@ -1,3 +1,5 @@
+//! This example shows how to send and receive messages from a web socket
+
 use elm_arch::{Cmd, Program, Sub};
 
 use futures::prelude::*;
@@ -5,7 +7,6 @@ use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_stream::wrappers::LinesStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use url::Url;
 
 #[derive(Debug, Default)]
 struct Model {
@@ -56,7 +57,7 @@ fn update(mut model: Model, msg: Msg) -> (Model, Cmd<Msg>) {
     }
 }
 
-fn websocket(url: Url, mut rx: Receiver<String>) -> impl Stream<Item = String> {
+fn websocket(url: &'static str, mut rx: Receiver<String>) -> impl Stream<Item = String> {
     connect_async(url)
         .map(move |res| {
             let (ws_stream, _) = res.unwrap();
@@ -89,8 +90,7 @@ fn subscriptions(mut model: Model) -> (Model, Sub<Msg>) {
     let stdin = on_enter_key().map(Msg::Input);
 
     let (tx, rx) = channel(64);
-    let ws_stream =
-        websocket("ws://echo.websocket.events".parse().unwrap(), rx).map(Msg::NewMessage);
+    let ws_stream = websocket("ws://echo.websocket.events", rx).map(Msg::NewMessage);
     model.ws_sender = Some(tx);
 
     (model, Box::pin(stream::select(stdin, ws_stream)))

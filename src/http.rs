@@ -1,7 +1,8 @@
-use anyhow::{bail, Error};
+//! This example shows how to perform an asynchronous HTTP request
+
+use anyhow::Error;
 use elm_arch::{Cmd, Program, Sub};
 use futures::{FutureExt, Stream};
-use hyper_tls::HttpsConnector;
 use serde::Deserialize;
 use tokio::io::AsyncBufReadExt;
 use tokio_stream::wrappers::LinesStream;
@@ -60,22 +61,14 @@ struct ResponseData {
 }
 
 async fn get_random_gif(topic: String) -> Result<String, Error> {
-    let https = HttpsConnector::new();
-    let client = hyper::client::Client::builder().build::<_, hyper::Body>(https);
-    let uri = format!("https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={topic}",)
-        .parse()
-        .unwrap();
-    let response = client.get(uri).await?;
-    let status = response.status();
-    let data = hyper::body::to_bytes(response.into_body()).await?;
-    if !status.is_success() {
-        bail!(
-            "request failed with body: {}",
-            String::from_utf8_lossy(&data)
-        );
-    }
-    let value: Response = serde_json::from_slice(&data)?;
-    Ok(value.data.url)
+    let response: Response = reqwest::get(format!(
+        "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag={topic}"
+    ))
+    .await?
+    .error_for_status()?
+    .json()
+    .await?;
+    Ok(response.data.url)
 }
 
 fn view(model: &Model) -> String {
