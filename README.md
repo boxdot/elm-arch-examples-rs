@@ -26,8 +26,9 @@ to the socket.)
 Practically, it should be possible to call the function after each update of
 the model and update current subscriptions, however, this also means that we
 need some kind of tracking and identification of subscriptions already created.
-If you find it interesting or challenging to implement this, feel free to
-create a pull request.
+Instead, we track a subscription with tokio's cancellation tokens (any other
+kind of a cancellation token of a stream is also possible); see the `time`
+example.
 
 ## How to run
 
