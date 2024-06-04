@@ -1,3 +1,7 @@
+//! This example shows how to execute an action on key press
+//!
+//! The action has a side-effect and therefore its result is encoded as a message.
+
 use elm_arch::{Cmd, Program, Sub};
 use futures::{Stream, StreamExt};
 use tokio::io::AsyncBufReadExt;
@@ -49,7 +53,7 @@ fn roll_dice() -> u8 {
 
 #[tokio::main]
 async fn main() {
-    println!("Please, press enter!");
+    println!("Please to generate a random number");
     Program {
         init,
         view,

@@ -27,12 +27,10 @@ path = "src/websocket.rs"
 [dependencies]
 anyhow = "1.0.64"
 futures = "0.3.24"
-hyper = { version = "0.14.20", features = ["client", "http1"] }
-hyper-tls = "0.5.0"
 rand = "0.8.5"
+reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.144", features = ["derive"] }
-serde_json = "1.0.85"
 tokio = { version = "1.21.0", features = ["macros", "io-std", "rt-multi-thread"] }
 tokio-stream = { version = "0.1.9", features = ["io-util"] }
 tokio-tungstenite = "0.17.2"
-url = "2.2.2"
+tokio-util = "0.7.11"

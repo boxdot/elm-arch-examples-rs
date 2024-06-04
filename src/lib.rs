@@ -3,11 +3,16 @@ use tokio::sync::mpsc::{channel, Sender};
 
 pub type BoxFuture<T> = future::BoxFuture<'static, T>;
 pub type BoxStream<T> = stream::BoxStream<'static, T>;
+pub type Sub<Msg> = BoxStream<Msg>;
 
 pub enum Cmd<Msg> {
     None,
-    Future(BoxFuture<Msg>),
+    // immediately produce a message
     Msg(Msg),
+    // spawn the future and wait until it produces a message
+    Future(BoxFuture<Msg>),
+    // spawn the subscriptionand emit messages from it one by one
+    Sub(Sub<Msg>),
 }
 
 impl<Msg> Cmd<Msg> {
@@ -18,8 +23,6 @@ impl<Msg> Cmd<Msg> {
         Self::Future(Box::pin(f))
     }
 }
-
-pub type Sub<Msg> = BoxStream<Msg>;
 
 pub struct Program<Init, View, Update, Subscriptions> {
     pub init: Init,
@@ -68,15 +71,20 @@ fn process_cmd<Msg: Send + 'static>(cmd: Cmd<Msg>, tx: Sender<Msg>) {
         Cmd::Future(fut) => {
             tokio::spawn(async move {
                 let msg = fut.await;
-                if let Err(e) = tx.send(msg).await {
-                    panic!("channel closed: {}", e);
-                }
+                let _ignore_closed_channel = tx.send(msg).await;
             });
         }
         Cmd::Msg(msg) => {
             tokio::spawn(async move {
-                if let Err(e) = tx.send(msg).await {
-                    panic!("channel closed: {}", e);
+                let _ignore_closed_channel = tx.send(msg).await;
+            });
+        }
+        Cmd::Sub(mut sub) => {
+            tokio::spawn(async move {
+                while let Some(msg) = sub.next().await {
+                    if tx.send(msg).await.is_err() {
+                        return;
+                    }
                 }
             });
         }
