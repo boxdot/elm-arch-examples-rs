@@ -9,9 +9,9 @@ pub enum Cmd<Msg> {
     None,
     // immediately produce a message
     Msg(Msg),
-    // spawn the futures and wait until it produces a message
+    // spawn the future and wait until it produces a message
     Future(BoxFuture<Msg>),
-    // spawn a subscription (stream of messages) and emit messages one by one
+    // spawn the subscriptionand emit messages from it one by one
     Sub(Sub<Msg>),
 }
 
